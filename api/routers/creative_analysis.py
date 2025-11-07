@@ -1138,3 +1138,250 @@ def train_markov_chain_model(
         "model_ready": True,
         "next_step": "Use POST /api/v1/creative/analyze to predict new creatives"
     }
+
+
+# ==================== EARLY SIGNALS ENDPOINTS ====================
+
+class EarlySignalsRequest(BaseModel):
+    """Request for early signals analysis (24 hours)."""
+
+    impressions: int = Field(..., description="Impressions in first 24h")
+    clicks: int = Field(..., description="Clicks in first 24h")
+    landing_views: int = Field(..., description="Landing page views")
+    landing_bounces: int = Field(..., description="Bounces (left immediately)")
+    avg_time_on_page: float = Field(..., description="Avg time on page (seconds)")
+    conversions: int = Field(default=0, description="Conversions in 24h (if any)")
+
+
+@router.post("/analyze-early-signals")
+def analyze_early_signals(
+    creative_id: str = Field(..., description="Creative UUID"),
+    request: EarlySignalsRequest = ...,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    ⚡ Анализ креатива после ПЕРВЫХ 24 ЧАСОВ для экономии бюджета.
+
+    **Цель:** Убить явных лузеров на бюджете $10, не доливая до $50.
+
+    **Workflow:**
+    1. День 0: Запустить 20 креативов × $10 = $200
+    2. День 1: Анализ через этот endpoint
+    3. День 1: Убить лузеров (signal = "kill")
+    4. Дни 2-7: Долить $40 только на выживших → $320
+    5. Итого: $200 + $320 = $520 вместо $1,000 (экономия 48%!)
+
+    **Example request:**
+    ```json
+    {
+      "creative_id": "uuid",
+      "impressions": 500,
+      "clicks": 20,
+      "landing_views": 18,
+      "landing_bounces": 6,
+      "avg_time_on_page": 6.5,
+      "conversions": 2
+    }
+    ```
+
+    **Response:**
+    ```json
+    {
+      "signal": "strong_positive",
+      "confidence": 0.75,
+      "recommendation": "scale",
+      "predicted_final_cvr": 0.12,
+      "reasoning": "Score: 3 (3 positive, 0 negative). ✅ CTR 4.00% (>3.00%) ✅ Bounce 33.3% (<40%) ✅ Time 6.5s (>5.0s) ✅ Early conversions: 2 (ранний CVR: 10.00%)",
+      "next_action": "🚀 Увеличить бюджет до $100-200. Predicted CVR: 12.0%"
+    }
+    ```
+    """
+
+    from utils.early_signals import EarlySignalsAnalyzer
+
+    user_id = current_user["user_id"]
+
+    # Найти креатив
+    creative = db.query(Creative).filter(
+        Creative.id == creative_id,
+        Creative.user_id == user_id
+    ).first()
+
+    if not creative:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Creative not found"
+        )
+
+    # Анализ
+    analyzer = EarlySignalsAnalyzer()
+
+    result = analyzer.analyze_24h_performance(
+        impressions=request.impressions,
+        clicks=request.clicks,
+        landing_views=request.landing_views,
+        landing_bounces=request.landing_bounces,
+        avg_time_on_page=request.avg_time_on_page,
+        conversions=request.conversions,
+        created_at=creative.created_at
+    )
+
+    # Обновить креатив (временные метрики для 24h)
+    creative.impressions = request.impressions
+    creative.clicks = request.clicks
+    creative.conversions = request.conversions
+
+    # Сохранить предсказание
+    if result.get("predicted_final_cvr"):
+        creative.predicted_cvr = int(result["predicted_final_cvr"] * 10000)
+
+    # Обновить статус по рекомендации
+    if result.get("recommendation") == "kill":
+        creative.status = "paused"
+    elif result.get("recommendation") == "scale":
+        creative.status = "active"
+
+    creative.last_stats_update = datetime.utcnow()
+    db.commit()
+
+    return result
+
+
+class BulkEarlySignalsRequest(BaseModel):
+    """Request for bulk 24h analysis."""
+
+    creatives_data: list[dict] = Field(
+        ...,
+        description="List of creatives with 24h metrics",
+        example=[{
+            "id": "uuid",
+            "name": "Video 1",
+            "impressions": 500,
+            "clicks": 20,
+            "landing_views": 18,
+            "landing_bounces": 6,
+            "avg_time_on_page": 6.5,
+            "conversions": 2,
+            "created_at": "2025-01-15T00:00:00Z"
+        }]
+    )
+
+
+@router.post("/bulk-analyze-24h")
+def bulk_analyze_early_signals(
+    request: BulkEarlySignalsRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    ⚡ Массовый анализ всех 20 креативов после 24 часов.
+
+    **Use case:**
+    После первых 24 часов микро-тестов:
+
+    ```json
+    {
+      "creatives_data": [
+        {
+          "id": "uuid-1",
+          "name": "Video 1",
+          "impressions": 500,
+          "clicks": 20,
+          "landing_views": 18,
+          "landing_bounces": 6,
+          "avg_time_on_page": 6.5,
+          "conversions": 2
+        },
+        {
+          "id": "uuid-2",
+          "name": "Video 2",
+          "impressions": 800,
+          "clicks": 5,
+          "landing_views": 4,
+          "landing_bounces": 3,
+          "avg_time_on_page": 1.2,
+          "conversions": 0
+        },
+        ...
+      ]
+    }
+    ```
+
+    **Response:**
+    ```json
+    {
+      "winners": [
+        {
+          "creative_id": "uuid-1",
+          "name": "Video 1",
+          "analysis": {
+            "signal": "strong_positive",
+            "recommendation": "scale",
+            "predicted_final_cvr": 0.15
+          }
+        }
+      ],
+      "potential": [...],
+      "losers": [...],
+      "summary": {
+        "total_analyzed": 20,
+        "winners_count": 3,
+        "potential_count": 9,
+        "losers_count": 8,
+        "kill_rate": 0.40,
+        "estimated_savings_usd": 320,
+        "next_step": "Kill 8 losers, continue 9 potential, scale 3 winners"
+      }
+    }
+    ```
+
+    **Экономия:**
+    - Без early signals: 20 × $50 = $1,000
+    - С early signals: 20 × $10 (day 0) + 12 × $40 (days 2-7) = $200 + $480 = $680
+    - Экономия: $320 (32%)
+    """
+
+    from utils.early_signals import bulk_analyze_24h
+
+    user_id = current_user["user_id"]
+
+    # Валидация креативов
+    for creative_data in request.creatives_data:
+        creative = db.query(Creative).filter(
+            Creative.id == creative_data.get("id"),
+            Creative.user_id == user_id
+        ).first()
+
+        if creative:
+            # Добавить created_at из БД
+            creative_data["created_at"] = creative.created_at
+
+    # Массовый анализ
+    result = bulk_analyze_24h(request.creatives_data)
+
+    # Обновить статусы в БД
+    for winner in result["winners"]:
+        creative_id = winner["creative_id"]
+        creative = db.query(Creative).filter(
+            Creative.id == creative_id,
+            Creative.user_id == user_id
+        ).first()
+
+        if creative:
+            creative.status = "active"
+            creative.is_winner = True
+
+    for loser in result["losers"]:
+        creative_id = loser["creative_id"]
+        creative = db.query(Creative).filter(
+            Creative.id == creative_id,
+            Creative.user_id == user_id
+        ).first()
+
+        if creative:
+            creative.status = "paused"
+
+    db.commit()
+
+    return result
