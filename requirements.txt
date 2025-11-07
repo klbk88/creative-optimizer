@@ -37,3 +37,13 @@ slowapi==0.1.9
 
 # Additional utilities
 python-dateutil==2.8.2
+
+# ML & Creative Analysis
+numpy==1.26.3
+scipy==1.11.4
+anthropic==0.8.1
+
+# CLIP Embeddings (optional - heavy dependencies, uncomment if needed)
+# transformers==4.36.2
+# torch==2.1.2
+# pillow==10.2.0

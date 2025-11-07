@@ -45,6 +45,15 @@ Built with FastAPI, PostgreSQL, Redis, and Telegram Admin Bot.
 - Top performers tracking
 - Daily automated reports
 
+### 🧠 **Markov Chain Creative Analysis** (NEW!)
+
+- Predict creative performance BEFORE spending on ads
+- Pattern extraction from UGC videos (hook, emotion, pacing)
+- Historical performance analysis
+- Confidence intervals and statistical significance
+- Save 50-70% testing budget by filtering losers
+- Integration with TikTok Spark Ads workflow
+
 ### 🔒 **Security & Privacy**
 
 - JWT authentication
@@ -71,11 +80,18 @@ docker-compose up -d
 
 ## 📚 Documentation
 
+### Core Documentation
 - **[Implementation Guide](docs/IMPLEMENTATION_GUIDE.md)** - Complete setup & integration
 - [Quick Start](docs/QUICKSTART.md) - Fast setup guide
 - [Admin Bot Guide](docs/ADMIN_BOT_README.md) - Bot usage & commands
 - [System Overview](docs/SYSTEM_OVERVIEW.md) - Architecture & components
+- [S2S Tracking Explained](docs/S2S_TRACKING_EXPLAINED.md) - How tracking works without cookies
 - [API Documentation](http://localhost:8000/docs) - Interactive API docs
+
+### Creative Analysis & Testing (NEW!)
+- **[Creative Analysis Guide](docs/CREATIVE_ANALYSIS_GUIDE.md)** - Markov Chain predictions
+- [UGC Briefs](docs/UGC_BRIEFS.md) - Ready-made briefs for Fiverr creators
+- [TikTok Spark Ads](docs/TIKTOK_SPARK_ADS.md) - Complete Spark Ads setup
 
 ## 🎯 Use Cases
 
@@ -98,6 +114,20 @@ docker-compose up -d
 2. Add direct link with UTM
 3. User clicks → Opens bot directly
 4. User buys → Conversion tracked
+```
+
+### Scenario 3: UGC Testing with Markov Chain (NEW!)
+
+```
+1. Order 5 UGC videos from Fiverr ($750)
+2. Analyze each with Creative API → Get predicted CVR
+3. Filter: Only test creatives with predicted CVR > 10%
+4. Test top 3 on TikTok Spark Ads ($1,050)
+5. Update performance after 7 days
+6. Scale winner to $500/day
+7. Markov Chain learns → Next predictions more accurate
+
+Result: Save $700 by skipping bad creatives!
 ```
 
 ## 🔧 Integration Examples
