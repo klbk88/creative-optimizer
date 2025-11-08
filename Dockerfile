@@ -5,11 +5,15 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies for OpenCV and audio processing
 RUN apt-get update && apt-get install -y \
     gcc \
+    g++ \
     postgresql-client \
-    curl \
+    libsndfile1 \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
@@ -28,9 +32,8 @@ USER appuser
 # Expose port
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:8000/health || exit 1
+# Expose port (Railway will set $PORT env var)
+ENV PORT=8000
 
-# Run application (workers=2 for production)
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# Run application (workers=1 for Railway free tier, increase for production)
+CMD uvicorn api.main:app --host 0.0.0.0 --port ${PORT} --workers 1
